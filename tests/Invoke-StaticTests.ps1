@@ -120,8 +120,9 @@ try {
     if (-not $confirmation.constraints.required -or $confirmation.constraints.validations[0].regex -cne '^CONFIRM$') {
         throw 'S4: explicit experimental-change confirmation is required.'
     }
+    # The portal converter rejects ARM-style [n] indexing after a function call.
     $expectedVmValidations = @(
-        "[equals(toLower(split(basics('vmSelector').id, '/')[4]), toLower(resourceGroup().name))]"
+        "[equals(toLower(first(skip(split(basics('vmSelector').id, '/'), 4))), toLower(resourceGroup().name))]"
         "[equals(basics('vmDetails').properties.storageProfile.osDisk.osType, 'Windows')]"
         "[contains(string(basics('vmDetails').properties.instanceView.statuses), 'PowerState/running')]"
     )

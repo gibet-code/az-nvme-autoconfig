@@ -104,6 +104,8 @@ lab reset as a production migration procedure.
 - Read the existing VM's region in the entry template and pass it into the
   configuration module. The VM's region can differ from its resource group's.
   Do not restore a user-supplied location parameter or redeploy the VM itself.
+- Use collection functions such as `first(skip(...))` in portal expressions.
+  The CreateUiDefinition converter rejects ARM-style `split(...)[n]` indexing.
 - Preserve unrelated BootExecute entries and ordering; add autoconfig only once.
 - Keep folder normalization in the guest script so CLI, portal and manual
   invocation share validation. Rebuild ARM whenever the embedded script changes.

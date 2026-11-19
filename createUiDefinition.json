@@ -63,7 +63,7 @@
           "validations": [
             { "regex": "^CONFIRM$", "message": "Type CONFIRM after reviewing the warning." },
             {
-              "isValid": "[equals(toLower(split(basics('vmSelector').id, '/')[4]), toLower(resourceGroup().name))]",
+              "isValid": "[equals(toLower(first(skip(split(basics('vmSelector').id, '/'), 4))), toLower(resourceGroup().name))]",
               "message": "The VM must be in the selected deployment resource group."
             },
             {
