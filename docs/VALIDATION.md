@@ -129,6 +129,15 @@ lab reset as a production migration procedure.
 - Never infer reconstruction from a successful start alone. Use a marker and,
   for deterministic lab evidence, an explicitly approved guarded RAW reset.
 
+## Portal form validation
+
+The published form passed Azure's expression parser and converter (21 expressions)
+and 13 interactive settings checks: both presets, Advanced controls and independent
+allocation/stripe overrides, preset-following allocation, preserved/cleared
+overrides, all folder modes and the effective-settings summary. Volume-only mode
+also reached Review + create with an empty hidden custom-folder field. No Create
+action was taken and no Azure resources were changed by these form checks.
+
 ## Remaining gaps
 
 - Automatic region discovery and the nested deployment are locally validated,
@@ -139,9 +148,9 @@ lab reset as a production migration procedure.
 - Other OS images, VM sizes/architectures, multiple NVMe disks and stripe behavior.
 - Reexecution with unchanged managed-command properties/reused runTag.
 - Non-RAW disk recovery rules, boot failure/delay handling and extension upgrades.
-- Portal rendering/expression execution. UI structure, parameter wiring and
-  validation rules are checked locally against documented controls; this is not
-  a live portal acceptance test.
+- Negative portal VM-selection cases and deployment execution from the custom UI.
+  Settings interactions are validated above; native volume-only behavior, SQL
+  readiness and Azure resource changes are not established by those checks.
 
 ## Local test coverage
 
