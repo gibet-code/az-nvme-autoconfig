@@ -134,14 +134,17 @@ lab reset as a production migration procedure.
 
 ## Portal form validation
 
-The preceding folder UI passed Azure's expression parser and converter (21 expressions)
-and 13 interactive settings checks: both presets, Advanced controls and independent
-allocation/stripe overrides, preset-following allocation, preserved/cleared
-overrides, all folder modes and the effective-settings summary. Volume-only mode
-also reached Review + create with an empty hidden custom-folder field. No Create
-action was taken and no Azure resources were changed by these form checks.
-The simplified custom/no-folder choices and workload-specific folder defaults
-require a fresh published-form acceptance check.
+The published two-choice folder UI passed Azure's expression parser and converter
+(24 expressions) and 10 interactive folder checks. SQL starts with editable
+`tempdb\data;tempdb\log` folders; General purpose starts with no folders. Only
+Custom folders and No folders are offered. Choices and edits remain independent
+and are preserved when switching workloads or folder modes.
+
+Shared storage settings were previously covered by 13 interactive checks of both
+presets, Advanced controls, allocation/stripe overrides and the effective summary.
+Volume-only mode also reached Review + create with an empty hidden custom-folder
+field. No Create action was taken and no Azure resources were changed by these
+form checks.
 
 ## Remaining gaps
 
