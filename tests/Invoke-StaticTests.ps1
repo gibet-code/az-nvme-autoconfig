@@ -141,14 +141,17 @@ try {
         if ($expression -match '^\[parse\(') { $type = 'int' }
         if ($type -ne $template.parameters.($output.Name).type) { throw "S4: output type mismatch for $($output.Name)" }
     }
-    $effectiveCluster = "if(steps('settings').showAdvanced, steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))"
+    $effectiveDrive = "if(empty(steps('settings').driveLetter), if(equals(steps('settings').preset, 'sql'), 'D', 'T'), steps('settings').driveLetter)"
+    $effectiveLabel = "if(empty(steps('settings').volumeLabel), if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe'), steps('settings').volumeLabel)"
+    $effectivePaths = "if(empty(steps('settings').volumePaths), if(equals(steps('settings').preset, 'sql'), 'tempdb\data;tempdb\log', 'temp\data;temp\log'), steps('settings').volumePaths)"
+    $effectiveCluster = "if(and(steps('settings').showAdvanced, not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))"
     $effectiveStripe = "if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536')"
     $effectiveModels = "if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2')"
     $expectedOutputs = @{
         vmName = "[basics('vmSelector').name]"
-        driveLetter = "[toUpper(steps('settings').driveLetter)]"
-        volumeLabel = "[steps('settings').volumeLabel]"
-        volumePaths = "[split(steps('settings').volumePaths, ';')]"
+        driveLetter = "[toUpper($effectiveDrive)]"
+        volumeLabel = "[$effectiveLabel]"
+        volumePaths = "[split($effectivePaths, ';')]"
         diskModels = "[split($effectiveModels, ';')]"
         volumeClusterSize = "[parse($effectiveCluster)]"
         virtualDiskStripeSize = "[parse($effectiveStripe)]"
@@ -185,21 +188,24 @@ try {
         driveLetter = @('D', 'T')
         volumeLabel = @('SQLTemp', 'TempNVMe')
         volumePaths = @('tempdb\data;tempdb\log', 'temp\data;temp\log')
-        clusterSize = @('64 KiB', '4 KiB')
     }
     foreach ($name in $expectedDefaults.Keys) {
         $values = $expectedDefaults[$name]
-        if ($controls[$name].defaultValue -cne "[if(equals(steps('settings').preset, 'sql'), '$($values[0])', '$($values[1])')]") {
-            throw "S4: wrong preset defaults for $name."
+        if ($controls[$name].defaultValue -cne '' -or
+            $controls[$name].placeholder -cne "[if(equals(steps('settings').preset, 'sql'), '$($values[0])', '$($values[1])')]") {
+            throw "S4: $name must start blank with reactive preset placeholders."
         }
     }
-    $expectedSummary = "[concat('Effective settings: ', toUpper(steps('settings').driveLetter), ': | Label: ', steps('settings').volumeLabel, ' | Folders: ', steps('settings').volumePaths, ' | NTFS allocation: ', string(div(parse($effectiveCluster), 1024)), ' KiB | Stripe: ', string(div(parse($effectiveStripe), 1024)), ' KiB | Exact disk models: ', $effectiveModels)]"
+    $expectedSummary = "[concat('Effective settings: ', toUpper($effectiveDrive), ': | Label: ', $effectiveLabel, ' | Folders: ', $effectivePaths, ' | NTFS allocation: ', string(div(parse($effectiveCluster), 1024)), ' KiB | Stripe: ', string(div(parse($effectiveStripe), 1024)), ' KiB | Exact disk models: ', $effectiveModels)]"
     if ($controls.effectiveSettings.options.text -cne $expectedSummary) { throw 'S4: summary must match effective deployment settings.' }
-    foreach ($name in @('driveLetter', 'volumeLabel', 'volumePaths', 'diskModels')) {
+    foreach ($name in @('clusterSize', 'stripeSize', 'diskModels')) {
         if ($controls[$name].constraints.required -ne $true) { throw "S4: $name must be required." }
     }
     foreach ($name in @('driveLetter', 'volumeLabel', 'volumePaths')) {
         $control = $controls[$name]
+        if ($control.constraints.required -ne $false -or '' -cnotmatch $control.constraints.validations[0].regex) {
+            throw "S4: $name must allow a blank override to follow the preset."
+        }
         if ($control.PSObject.Properties['visible']) { throw 'S4: main fields must remain editable for both presets.' }
         foreach ($value in $expectedDefaults[$name]) {
             if ($value -cnotmatch $control.constraints.validations[0].regex) { throw "S4: invalid preset default for $name." }
@@ -220,14 +226,18 @@ try {
     foreach ($path in @('D:\', 'D:data', 'D:\..\data', 'D:\data\\logs', '\\server\share')) {
         if ($path -cmatch $controls.volumePaths.constraints.validations[0].regex) { throw "S5 UI accepted invalid full path: $path" }
     }
-    $allowedClusters = @($controls.clusterSize.constraints.allowedValues | ForEach-Object { [int]$_.value })
+    $presetChoice = @($controls.clusterSize.constraints.allowedValues | Where-Object value -eq 'preset')
+    if ($presetChoice.Count -ne 1 -or $controls.clusterSize.defaultValue -cne $presetChoice[0].label) {
+        throw 'S4: allocation must default to Use preset, not a stale initialized numeric choice.'
+    }
+    $allowedClusters = @($controls.clusterSize.constraints.allowedValues | Where-Object value -ne 'preset' | ForEach-Object { [int]$_.value })
     if (Compare-Object $allowedClusters $template.parameters.volumeClusterSize.allowedValues) { throw 'S4 cluster choices differ from template.' }
     $allowedStripes = @($controls.stripeSize.constraints.allowedValues | ForEach-Object { [int]$_.value })
     if (Compare-Object $allowedStripes @(4096,8192,16384,32768,65536,131072,262144,524288,1048576)) {
         throw 'S4: stripe choices must match the guest power-of-two range.'
     }
     foreach ($name in @('clusterSize', 'stripeSize')) {
-        foreach ($choice in $controls[$name].constraints.allowedValues) {
+        foreach ($choice in @($controls[$name].constraints.allowedValues | Where-Object value -ne 'preset')) {
             if ($choice.label -cne "$([int]$choice.value / 1024) KiB") { throw 'S4: allocation/stripe labels must match byte values.' }
         }
     }

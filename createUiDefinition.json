@@ -88,7 +88,7 @@
             "type": "Microsoft.Common.OptionsGroup",
             "label": "Storage preset",
             "defaultValue": "SQL Server tempdb",
-            "toolTip": "Choose starting values, then review the effective settings below. Neither preset configures applications or services.",
+            "toolTip": "Blank override fields follow this preset. Entered overrides are kept when switching presets. Neither preset configures applications or services.",
             "constraints": {
               "required": true,
               "allowedValues": [
@@ -109,23 +109,29 @@
           {
             "name": "driveLetter",
             "type": "Microsoft.Common.TextBox",
-            "label": "Drive letter",
-            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), 'D', 'T')]",
-            "constraints": { "required": true, "validations": [{ "regex": "^[D-Zd-z]$", "message": "One letter D-Z, without a colon." }] }
+            "label": "Drive letter (optional override)",
+            "defaultValue": "",
+            "placeholder": "[if(equals(steps('settings').preset, 'sql'), 'D', 'T')]",
+            "toolTip": "Leave blank to use the preset. Entered overrides are kept when switching presets.",
+            "constraints": { "required": false, "validations": [{ "regex": "^[D-Zd-z]?$", "message": "Leave blank for the preset, or enter one letter D-Z without a colon." }] }
           },
           {
             "name": "volumeLabel",
             "type": "Microsoft.Common.TextBox",
-            "label": "Volume label",
-            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe')]",
-            "constraints": { "required": true, "validations": [{ "regex": "^[^'\"\\\\/:*?<>|\\x00-\\x1f]{1,32}$", "message": "1-32 characters; no quotes or NTFS-invalid characters." }] }
+            "label": "Volume label (optional override)",
+            "defaultValue": "",
+            "placeholder": "[if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe')]",
+            "toolTip": "Leave blank to use the preset. Entered overrides are kept when switching presets.",
+            "constraints": { "required": false, "validations": [{ "regex": "^[^'\"\\\\/:*?<>|\\x00-\\x1f]{0,32}$", "message": "Leave blank for the preset, or enter 1-32 characters with no quotes or NTFS-invalid characters." }] }
           },
           {
             "name": "volumePaths",
             "type": "Microsoft.Common.TextBox",
-            "label": "Folders (relative or full paths; semicolon-separated)",
-            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log')]",
-            "constraints": { "required": true, "validations": [{ "regex": "^(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*$", "message": "Relative folders or full paths on the selected drive, separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
+            "label": "Folders (optional override; semicolon-separated)",
+            "defaultValue": "",
+            "placeholder": "[if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log')]",
+            "toolTip": "Leave blank to use the preset. Entered overrides are kept when switching presets. Relative or full paths on the selected drive.",
+            "constraints": { "required": false, "validations": [{ "regex": "^(?:(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*)?$", "message": "Leave blank for the preset, or enter relative/full paths on the selected drive separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
           },
           {
             "name": "showAdvanced",
@@ -146,11 +152,12 @@
             "name": "clusterSize",
             "type": "Microsoft.Common.DropDown",
             "label": "NTFS allocation unit",
-            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), '64 KiB', '4 KiB')]",
+            "defaultValue": "Use preset (SQL: 64 KiB; general purpose: 4 KiB)",
             "visible": "[steps('settings').showAdvanced]",
             "constraints": {
               "required": true,
               "allowedValues": [
+                { "label": "Use preset (SQL: 64 KiB; general purpose: 4 KiB)", "value": "preset" },
                 { "label": "4 KiB", "value": "4096" }, { "label": "8 KiB", "value": "8192" },
                 { "label": "16 KiB", "value": "16384" }, { "label": "32 KiB", "value": "32768" },
                 { "label": "64 KiB", "value": "65536" }
@@ -187,7 +194,7 @@
             "type": "Microsoft.Common.InfoBox",
             "options": {
               "icon": "Info",
-              "text": "[concat('Effective settings: ', toUpper(steps('settings').driveLetter), ': | Label: ', steps('settings').volumeLabel, ' | Folders: ', steps('settings').volumePaths, ' | NTFS allocation: ', string(div(parse(if(steps('settings').showAdvanced, steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))), 1024)), ' KiB | Stripe: ', string(div(parse(if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536')), 1024)), ' KiB | Exact disk models: ', if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'))]"
+              "text": "[concat('Effective settings: ', toUpper(if(empty(steps('settings').driveLetter), if(equals(steps('settings').preset, 'sql'), 'D', 'T'), steps('settings').driveLetter)), ': | Label: ', if(empty(steps('settings').volumeLabel), if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe'), steps('settings').volumeLabel), ' | Folders: ', if(empty(steps('settings').volumePaths), if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log'), steps('settings').volumePaths), ' | NTFS allocation: ', string(div(parse(if(and(steps('settings').showAdvanced, not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))), 1024)), ' KiB | Stripe: ', string(div(parse(if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536')), 1024)), ' KiB | Exact disk models: ', if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'))]"
             }
           }
         ]
@@ -195,11 +202,11 @@
     ],
     "outputs": {
       "vmName": "[basics('vmSelector').name]",
-      "driveLetter": "[toUpper(steps('settings').driveLetter)]",
-      "volumeLabel": "[steps('settings').volumeLabel]",
-      "volumePaths": "[split(steps('settings').volumePaths, ';')]",
+      "driveLetter": "[toUpper(if(empty(steps('settings').driveLetter), if(equals(steps('settings').preset, 'sql'), 'D', 'T'), steps('settings').driveLetter))]",
+      "volumeLabel": "[if(empty(steps('settings').volumeLabel), if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe'), steps('settings').volumeLabel)]",
+      "volumePaths": "[split(if(empty(steps('settings').volumePaths), if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log'), steps('settings').volumePaths), ';')]",
       "diskModels": "[split(if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'), ';')]",
-      "volumeClusterSize": "[parse(if(steps('settings').showAdvanced, steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096')))]",
+      "volumeClusterSize": "[parse(if(and(steps('settings').showAdvanced, not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096')))]",
       "virtualDiskStripeSize": "[parse(if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536'))]",
       "runTag": "[utcNow()]"
     }

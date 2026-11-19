@@ -35,11 +35,14 @@ Select an existing running Windows VM and choose a storage preset:
 | SQL Server tempdb | D | SQLTemp | tempdb\data;tempdb\log | 64 KiB |
 | General purpose | T | TempNVMe | temp\data;temp\log | 4 KiB |
 
-Both presets use one form and the same native storage mechanism. Drive, label and
-folders remain editable. Review the effective-settings summary after changing
-presets or editing values. **Advanced** enables allocation-unit, stripe-size and
+Both presets use one form and the same native storage mechanism. Leave the optional
+drive, label and folder overrides blank to follow the selected preset; placeholders
+show its defaults. Entered overrides are preserved when switching presets. Review
+the effective-settings summary after changing presets or editing values.
+**Advanced** enables allocation-unit, stripe-size and
 exact temporary-disk model overrides; unchecking it restores the preset's storage
-settings without changing drive, label or folders. Stripe size defaults to 64 KiB
+settings without changing drive, label or folders. Allocation defaults to **Use
+preset** until explicitly overridden. Stripe size defaults to 64 KiB
 for both presets and is separate from the NTFS allocation unit.
 
 The SQL allocation size is a preset, not a universal tempdb requirement;
