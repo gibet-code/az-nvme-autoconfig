@@ -33,14 +33,16 @@ Select an existing running Windows VM and choose a storage preset:
 | Preset | Drive | Label | Folders | NTFS allocation unit |
 |---|---|---|---|---|
 | SQL Server tempdb | D | SQLTemp | tempdb\data;tempdb\log | 64 KiB |
-| General purpose | T | TempNVMe | temp\data;temp\log | 4 KiB |
+| General purpose | T | TempNVMe | None | 4 KiB |
 
 Both presets use one form and the same native storage mechanism. Leave the optional
 drive and label overrides blank to follow the selected preset; placeholders
 show its defaults. Entered overrides are preserved when switching presets. Review
 the effective-settings summary after changing presets or editing values.
-**Folder creation** offers preset folders, custom folders, or **No folders (volume
-only)**. Custom paths remain editable and are preserved when switching modes.
+**Folder creation** offers **Custom folders** or **No folders (volume only)**.
+SQL starts with editable `tempdb\data;tempdb\log` folders; General purpose starts
+with no folders. Each workload remembers its own folder choice and edits when
+switching workloads or folder modes.
 Volume-only mode passes an empty folder array; it does not delete existing folders.
 **Advanced** enables allocation-unit, stripe-size and
 exact temporary-disk model overrides; unchecking it restores the preset's storage

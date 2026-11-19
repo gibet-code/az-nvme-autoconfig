@@ -108,7 +108,9 @@ readiness from storage health alone.
   service-account ACLs after storage loss, startup timing and ERRORLOG errors 3/5.
 - **Portal:** Use the [CreateUiDefinition sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade)
   and a published template. Check visible disclaimers/confirmation, SQL/general
-  preset defaults and switching after edits, preset/custom/no-folder modes,
+  preset defaults and switching after edits, custom/no-folder modes, SQL's editable
+  data/log defaults and General purpose's no-folder default, independent folder
+  choices/edits when switching workloads,
   full/relative paths, numeric outputs
   and current VM region. Check Advanced overrides, unchecking Advanced to restore
   preset storage values, summary/output agreement and automatic retry tags. Reject

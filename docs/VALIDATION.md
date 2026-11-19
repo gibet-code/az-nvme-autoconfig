@@ -109,8 +109,11 @@ lab reset as a production migration procedure.
 - Keep a single set of optional drive/label overrides; blank fields follow the preset.
   Do not rely on reactive TextBox defaults: the portal retains initialized values.
   Preserve entered overrides when switching presets; clearing them uses the preset.
-  Folder modes must distinguish preset/custom folders from no folders (`[]`, not
-  an array containing an empty string). No-folder deployments remain unverified
+  Folder controls use independent literal defaults per workload: SQL starts with
+  Custom folders (`tempdb\data;tempdb\log`), General purpose with No folders.
+  Keep only custom/no-folder choices and remember each workload's edits.
+  No folders must produce `[]`, not an array containing an empty string.
+  No-folder deployments remain unverified
   on Azure. Guard numeric dropdown initialization before parsing advanced values.
   Advanced overrides affect outputs only while enabled; the effective-settings
   summary must reflect the same values. SQL defaults to 64 KiB NTFS allocation,
@@ -131,12 +134,14 @@ lab reset as a production migration procedure.
 
 ## Portal form validation
 
-The published form passed Azure's expression parser and converter (21 expressions)
+The preceding folder UI passed Azure's expression parser and converter (21 expressions)
 and 13 interactive settings checks: both presets, Advanced controls and independent
 allocation/stripe overrides, preset-following allocation, preserved/cleared
 overrides, all folder modes and the effective-settings summary. Volume-only mode
 also reached Review + create with an empty hidden custom-folder field. No Create
 action was taken and no Azure resources were changed by these form checks.
+The simplified custom/no-folder choices and workload-specific folder defaults
+require a fresh published-form acceptance check.
 
 ## Remaining gaps
 
