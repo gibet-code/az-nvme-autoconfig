@@ -84,174 +84,124 @@
         "label": "Volume settings",
         "elements": [
           {
-            "name": "profile",
+            "name": "preset",
             "type": "Microsoft.Common.OptionsGroup",
-            "label": "Profile",
-            "defaultValue": "SQL Server",
+            "label": "Storage preset",
+            "defaultValue": "SQL Server tempdb",
+            "toolTip": "Choose starting values, then review the effective settings below. Neither preset configures applications or services.",
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "SQL Server", "value": "sql" },
-                { "label": "Custom", "value": "custom" }
+                { "label": "SQL Server tempdb", "value": "sql" },
+                { "label": "General purpose", "value": "custom" }
               ]
             }
           },
           {
             "name": "sqlInfo",
             "type": "Microsoft.Common.InfoBox",
-            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "visible": "[equals(steps('settings').preset, 'sql')]",
             "options": {
               "icon": "Info",
-              "text": "Match folders to your instance's tempdb paths: SELECT physical_name FROM sys.master_files WHERE database_id = 2. The SQL service account needs folder access. This deployment does not move tempdb or grant permissions."
+              "text": "The SQL preset uses 64 KiB NTFS allocation units, not a universal tempdb requirement. Match folders to your instance's tempdb paths: SELECT physical_name FROM sys.master_files WHERE database_id = 2. This deployment does not move tempdb, configure services or grant permissions."
             }
           },
           {
-            "name": "sqlDriveLetter",
+            "name": "driveLetter",
             "type": "Microsoft.Common.TextBox",
-            "label": "SQL drive letter",
-            "defaultValue": "D",
-            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "label": "Drive letter",
+            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), 'D', 'T')]",
             "constraints": { "required": true, "validations": [{ "regex": "^[D-Zd-z]$", "message": "One letter D-Z, without a colon." }] }
           },
           {
-            "name": "sqlVolumeLabel",
+            "name": "volumeLabel",
             "type": "Microsoft.Common.TextBox",
-            "label": "SQL volume label",
-            "defaultValue": "SQLTemp",
-            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "label": "Volume label",
+            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe')]",
             "constraints": { "required": true, "validations": [{ "regex": "^[^'\"\\\\/:*?<>|\\x00-\\x1f]{1,32}$", "message": "1-32 characters; no quotes or NTFS-invalid characters." }] }
           },
           {
-            "name": "sqlVolumePaths",
+            "name": "volumePaths",
             "type": "Microsoft.Common.TextBox",
-            "label": "SQL folders (relative or full paths; semicolon-separated)",
-            "defaultValue": "tempdb\\data;tempdb\\log",
-            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "label": "Folders (relative or full paths; semicolon-separated)",
+            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log')]",
             "constraints": { "required": true, "validations": [{ "regex": "^(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*$", "message": "Relative folders or full paths on the selected drive, separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
           },
           {
-            "name": "sqlClusterSize",
+            "name": "showAdvanced",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Advanced: override storage settings",
+            "constraints": { "required": false }
+          },
+          {
+            "name": "advancedInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[steps('settings').showAdvanced]",
+            "options": {
+              "icon": "Warning",
+              "text": "Overrides apply only while Advanced is checked. Allocation units and stripe size are different settings; multi-disk stripe behavior is unverified. Match temporary NVMe disks only, never persistent disks. Existing volumes are not reformatted; incompatible allocation sizes are rejected."
+            }
+          },
+          {
+            "name": "clusterSize",
             "type": "Microsoft.Common.DropDown",
-            "label": "SQL NTFS allocation unit",
-            "defaultValue": "64 KB",
-            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "label": "NTFS allocation unit",
+            "defaultValue": "[if(equals(steps('settings').preset, 'sql'), '64 KiB', '4 KiB')]",
+            "visible": "[steps('settings').showAdvanced]",
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
-                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
-                { "label": "64 KB", "value": "65536" }
+                { "label": "4 KiB", "value": "4096" }, { "label": "8 KiB", "value": "8192" },
+                { "label": "16 KiB", "value": "16384" }, { "label": "32 KiB", "value": "32768" },
+                { "label": "64 KiB", "value": "65536" }
               ]
             }
           },
           {
-            "name": "sqlStripeSize",
+            "name": "stripeSize",
             "type": "Microsoft.Common.DropDown",
-            "label": "SQL stripe size (multi-disk behavior unverified)",
-            "defaultValue": "64 KB",
-            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "label": "Stripe size (multi-disk behavior unverified)",
+            "defaultValue": "64 KiB",
+            "visible": "[steps('settings').showAdvanced]",
             "constraints": {
               "required": true,
               "allowedValues": [
-                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
-                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
-                { "label": "64 KB", "value": "65536" }, { "label": "128 KB", "value": "131072" },
-                { "label": "256 KB", "value": "262144" }, { "label": "512 KB", "value": "524288" },
-                { "label": "1024 KB", "value": "1048576" }
+                { "label": "4 KiB", "value": "4096" }, { "label": "8 KiB", "value": "8192" },
+                { "label": "16 KiB", "value": "16384" }, { "label": "32 KiB", "value": "32768" },
+                { "label": "64 KiB", "value": "65536" }, { "label": "128 KiB", "value": "131072" },
+                { "label": "256 KiB", "value": "262144" }, { "label": "512 KiB", "value": "524288" },
+                { "label": "1024 KiB", "value": "1048576" }
               ]
             }
           },
           {
-            "name": "sqlDiskModels",
+            "name": "diskModels",
             "type": "Microsoft.Common.TextBox",
-            "label": "SQL exact disk models (advanced; semicolon-separated)",
+            "label": "Exact temporary NVMe disk models (semicolon-separated)",
             "defaultValue": "Microsoft NVMe Direct Disk v2",
-            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "visible": "[steps('settings').showAdvanced]",
             "constraints": { "required": true, "validations": [{ "regex": "^[^'\";\\x00-\\x1f]+(;[^'\";\\x00-\\x1f]+)*$", "message": "Nonempty exact model names, no quotes." }] }
           },
           {
-            "name": "customDriveLetter",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Custom drive letter",
-            "defaultValue": "T",
-            "visible": "[equals(steps('settings').profile, 'custom')]",
-            "constraints": { "required": true, "validations": [{ "regex": "^[D-Zd-z]$", "message": "One letter D-Z, without a colon." }] }
-          },
-          {
-            "name": "customVolumeLabel",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Custom volume label",
-            "defaultValue": "TempNVMe",
-            "visible": "[equals(steps('settings').profile, 'custom')]",
-            "constraints": { "required": true, "validations": [{ "regex": "^[^'\"\\\\/:*?<>|\\x00-\\x1f]{1,32}$", "message": "1-32 characters; no quotes or NTFS-invalid characters." }] }
-          },
-          {
-            "name": "customVolumePaths",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Custom folders (relative or full paths; semicolon-separated)",
-            "defaultValue": "temp\\data;temp\\log",
-            "visible": "[equals(steps('settings').profile, 'custom')]",
-            "constraints": { "required": true, "validations": [{ "regex": "^(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*$", "message": "Relative folders or full paths on the selected drive, separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
-          },
-          {
-            "name": "customClusterSize",
-            "type": "Microsoft.Common.DropDown",
-            "label": "Custom NTFS allocation unit",
-            "defaultValue": "4 KB",
-            "visible": "[equals(steps('settings').profile, 'custom')]",
-            "constraints": {
-              "required": true,
-              "allowedValues": [
-                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
-                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
-                { "label": "64 KB", "value": "65536" }
-              ]
+            "name": "effectiveSettings",
+            "type": "Microsoft.Common.InfoBox",
+            "options": {
+              "icon": "Info",
+              "text": "[concat('Effective settings: ', toUpper(steps('settings').driveLetter), ': | Label: ', steps('settings').volumeLabel, ' | Folders: ', steps('settings').volumePaths, ' | NTFS allocation: ', string(div(parse(if(steps('settings').showAdvanced, steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))), 1024)), ' KiB | Stripe: ', string(div(parse(if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536')), 1024)), ' KiB | Exact disk models: ', if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'))]"
             }
-          },
-          {
-            "name": "customStripeSize",
-            "type": "Microsoft.Common.DropDown",
-            "label": "Custom stripe size (multi-disk behavior unverified)",
-            "defaultValue": "64 KB",
-            "visible": "[equals(steps('settings').profile, 'custom')]",
-            "constraints": {
-              "required": true,
-              "allowedValues": [
-                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
-                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
-                { "label": "64 KB", "value": "65536" }, { "label": "128 KB", "value": "131072" },
-                { "label": "256 KB", "value": "262144" }, { "label": "512 KB", "value": "524288" },
-                { "label": "1024 KB", "value": "1048576" }
-              ]
-            }
-          },
-          {
-            "name": "customDiskModels",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Custom exact disk models (advanced; never persistent disks)",
-            "defaultValue": "Microsoft NVMe Direct Disk v2",
-            "visible": "[equals(steps('settings').profile, 'custom')]",
-            "constraints": { "required": true, "validations": [{ "regex": "^[^'\";\\x00-\\x1f]+(;[^'\";\\x00-\\x1f]+)*$", "message": "Nonempty exact model names, no quotes." }] }
-          },
-          {
-            "name": "runTag",
-            "type": "Microsoft.Common.TextBox",
-            "label": "Unique retry tag (change for each redeployment, e.g. portal-2)",
-            "defaultValue": "[utcNow()]",
-            "constraints": { "required": true }
           }
         ]
       }
     ],
     "outputs": {
       "vmName": "[basics('vmSelector').name]",
-      "driveLetter": "[toUpper(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlDriveLetter, steps('settings').customDriveLetter))]",
-      "volumeLabel": "[if(equals(steps('settings').profile, 'sql'), steps('settings').sqlVolumeLabel, steps('settings').customVolumeLabel)]",
-      "volumePaths": "[split(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlVolumePaths, steps('settings').customVolumePaths), ';')]",
-      "diskModels": "[split(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlDiskModels, steps('settings').customDiskModels), ';')]",
-      "volumeClusterSize": "[parse(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlClusterSize, steps('settings').customClusterSize))]",
-      "virtualDiskStripeSize": "[parse(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlStripeSize, steps('settings').customStripeSize))]",
-      "runTag": "[steps('settings').runTag]"
+      "driveLetter": "[toUpper(steps('settings').driveLetter)]",
+      "volumeLabel": "[steps('settings').volumeLabel]",
+      "volumePaths": "[split(steps('settings').volumePaths, ';')]",
+      "diskModels": "[split(if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'), ';')]",
+      "volumeClusterSize": "[parse(if(steps('settings').showAdvanced, steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096')))]",
+      "virtualDiskStripeSize": "[parse(if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536'))]",
+      "runTag": "[utcNow()]"
     }
   }
 }

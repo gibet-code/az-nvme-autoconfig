@@ -106,6 +106,11 @@ lab reset as a production migration procedure.
   Do not restore a user-supplied location parameter or redeploy the VM itself.
 - Use collection functions such as `first(skip(...))` in portal expressions.
   The CreateUiDefinition converter rejects ARM-style `split(...)[n]` indexing.
+- Keep a single set of editable volume fields with preset-driven defaults.
+  Advanced overrides affect outputs only while enabled; the effective-settings
+  summary must reflect the same values. SQL defaults to 64 KiB NTFS allocation,
+  general purpose to 4 KiB, and both to 64 KiB stripe size. Portal retry tags are
+  generated automatically; neither preset configures applications or permissions.
 - Preserve unrelated BootExecute entries and ordering; add autoconfig only once.
 - Keep folder normalization in the guest script so CLI, portal and manual
   invocation share validation. Rebuild ARM whenever the embedded script changes.

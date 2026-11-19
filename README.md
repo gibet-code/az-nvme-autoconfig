@@ -28,12 +28,26 @@ your workload. This project does not install or configure applications.
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fgibet-code%2Faz-nvme-autoconfig%2Fmain%2Fazuredeploy.json/createUIDefinitionUri/https%3A%2F%2Fraw.githubusercontent.com%2Fgibet-code%2Faz-nvme-autoconfig%2Fmain%2FcreateUiDefinition.json)
 
-Select an existing running Windows VM and choose a profile:
+Select an existing running Windows VM and choose a storage preset:
 
-- **Custom:** choose storage settings for your workload, including non-SQL uses.
-- **SQL:** start with volume and folder defaults intended for SQL Server tempdb.
+| Preset | Drive | Label | Folders | NTFS allocation unit |
+|---|---|---|---|---|
+| SQL Server tempdb | D | SQLTemp | tempdb\data;tempdb\log | 64 KiB |
+| General purpose | T | TempNVMe | temp\data;temp\log | 4 KiB |
 
-Both profiles use the same native storage mechanism.
+Both presets use one form and the same native storage mechanism. Drive, label and
+folders remain editable. Review the effective-settings summary after changing
+presets or editing values. **Advanced** enables allocation-unit, stripe-size and
+exact temporary-disk model overrides; unchecking it restores the preset's storage
+settings without changing drive, label or folders. Stripe size defaults to 64 KiB
+for both presets and is separate from the NTFS allocation unit.
+
+The SQL allocation size is a preset, not a universal tempdb requirement;
+[Microsoft's guidance](https://learn.microsoft.com/azure/azure-sql/virtual-machines/windows/performance-guidelines-best-practices-storage)
+distinguishes data disks from the existing temporary D: drive. Match the folders
+to your SQL instance; deployment does not move tempdb, configure services or grant
+permissions. Existing volumes are not reformatted to change allocation size.
+The portal generates a retry tag automatically for each new deployment session.
 
 Alternatively, use your selected Azure CLI subscription. The template reads the VM's
 actual region automatically without modifying the VM resource itself:

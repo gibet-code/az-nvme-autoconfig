@@ -141,55 +141,97 @@ try {
         if ($expression -match '^\[parse\(') { $type = 'int' }
         if ($type -ne $template.parameters.($output.Name).type) { throw "S4: output type mismatch for $($output.Name)" }
     }
+    $effectiveCluster = "if(steps('settings').showAdvanced, steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))"
+    $effectiveStripe = "if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536')"
+    $effectiveModels = "if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2')"
     $expectedOutputs = @{
         vmName = "[basics('vmSelector').name]"
-        driveLetter = "[toUpper(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlDriveLetter, steps('settings').customDriveLetter))]"
-        volumeLabel = "[if(equals(steps('settings').profile, 'sql'), steps('settings').sqlVolumeLabel, steps('settings').customVolumeLabel)]"
-        volumePaths = "[split(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlVolumePaths, steps('settings').customVolumePaths), ';')]"
-        diskModels = "[split(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlDiskModels, steps('settings').customDiskModels), ';')]"
-        volumeClusterSize = "[parse(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlClusterSize, steps('settings').customClusterSize))]"
-        virtualDiskStripeSize = "[parse(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlStripeSize, steps('settings').customStripeSize))]"
-        runTag = "[steps('settings').runTag]"
+        driveLetter = "[toUpper(steps('settings').driveLetter)]"
+        volumeLabel = "[steps('settings').volumeLabel]"
+        volumePaths = "[split(steps('settings').volumePaths, ';')]"
+        diskModels = "[split($effectiveModels, ';')]"
+        volumeClusterSize = "[parse($effectiveCluster)]"
+        virtualDiskStripeSize = "[parse($effectiveStripe)]"
+        runTag = "[utcNow()]"
     }
     foreach ($name in $expectedOutputs.Keys) {
-        if ($ui.parameters.outputs.$name -cne $expectedOutputs[$name]) { throw "S4: wrong selected-profile binding for $name." }
+        if ($ui.parameters.outputs.$name -cne $expectedOutputs[$name]) { throw "S4: wrong shared-form binding for $name." }
     }
-    foreach ($profileName in @('sql', 'custom')) {
-        $controls = @{}
-        foreach ($control in $ui.parameters.steps[0].elements) { $controls[$control.name] = $control }
-        foreach ($suffix in @('DriveLetter', 'VolumeLabel', 'VolumePaths', 'ClusterSize', 'StripeSize', 'DiskModels')) {
-            $control = $controls["$profileName$suffix"]
-            if ($control.visible -ne "[equals(steps('settings').profile, '$profileName')]") { throw "S4: wrong visibility for $($control.name)" }
-            if ($control.defaultValue -match '^\[') { throw 'S4: profile defaults must not depend on controls.' }
-        }
-        foreach ($suffix in @('DriveLetter', 'VolumeLabel', 'VolumePaths')) {
-            $control = $controls["$profileName$suffix"]
-            $regex = $control.constraints.validations[0].regex
-            if ($control.defaultValue -cnotmatch $regex) { throw "S4: invalid default for $($control.name)" }
-        }
-        foreach ($letter in @('A', 'B', 'C', 'DD')) {
-            if ($letter -cmatch $controls["${profileName}DriveLetter"].constraints.validations[0].regex) { throw "S5 UI accepted $letter" }
-        }
-        foreach ($label in @("bad'label", 'bad"label', ('x' * 33))) {
-            if ($label -cmatch $controls["${profileName}VolumeLabel"].constraints.validations[0].regex) { throw 'S5 UI accepted invalid label.' }
-        }
-        foreach ($path in @('..\data', 'C:\data', '\data', "bad'path", 'bad"path', 'con', 'nul.txt', 'D:\aUx', 'data\lPt1.log')) {
-            if ($path -cmatch $controls["${profileName}VolumePaths"].constraints.validations[0].regex) { throw "S5 UI accepted invalid path: $path" }
-        }
-        foreach ($path in @('D:\tempdb\data', 't:\temp\data;temp\log', 'tempdb\data;D:\tempdb\log')) {
-            if ($path -cnotmatch $controls["${profileName}VolumePaths"].constraints.validations[0].regex) { throw "S5 UI rejected valid path syntax: $path" }
-        }
-        foreach ($path in @('D:\', 'D:data', 'D:\..\data', 'D:\data\\logs', '\\server\share')) {
-            if ($path -cmatch $controls["${profileName}VolumePaths"].constraints.validations[0].regex) { throw "S5 UI accepted invalid full path: $path" }
-        }
-        $allowedClusters = @($controls["${profileName}ClusterSize"].constraints.allowedValues | ForEach-Object { [int]$_.value })
-        if (Compare-Object $allowedClusters $template.parameters.volumeClusterSize.allowedValues) { throw 'S4 cluster choices differ from template.' }
-        $allowedStripes = @($controls["${profileName}StripeSize"].constraints.allowedValues | ForEach-Object { [int]$_.value })
-        if (Compare-Object $allowedStripes @(4096,8192,16384,32768,65536,131072,262144,524288,1048576)) {
-            throw 'S4: stripe choices must match the guest power-of-two range.'
+    $controls = @{}
+    foreach ($control in $ui.parameters.steps[0].elements) {
+        if ($controls.ContainsKey($control.name)) { throw 'S4: duplicate settings control name.' }
+        $controls[$control.name] = $control
+    }
+    $expectedControlNames = @('preset', 'sqlInfo', 'driveLetter', 'volumeLabel', 'volumePaths',
+        'showAdvanced', 'advancedInfo', 'clusterSize', 'stripeSize', 'diskModels', 'effectiveSettings')
+    if (Compare-Object @($controls.Keys) $expectedControlNames) { throw 'S4: expected one shared form without a manual retry tag.' }
+    if ($controls.preset.defaultValue -cne 'SQL Server tempdb' -or
+        ($controls.preset.constraints.allowedValues | ConvertTo-Json -Compress) -cne
+        '[{"label":"SQL Server tempdb","value":"sql"},{"label":"General purpose","value":"custom"}]') {
+        throw 'S4: unexpected workload presets.'
+    }
+    if ($controls.showAdvanced.type -ne 'Microsoft.Common.CheckBox' -or $controls.showAdvanced.constraints.required -ne $false) {
+        throw 'S4: Advanced must be optional.'
+    }
+    foreach ($name in @('advancedInfo', 'clusterSize', 'stripeSize', 'diskModels')) {
+        if ($controls[$name].visible -cne "[steps('settings').showAdvanced]") { throw "S4: wrong Advanced visibility for $name." }
+    }
+    if ($controls.sqlInfo.visible -cne "[equals(steps('settings').preset, 'sql')]" -or
+        $controls.stripeSize.defaultValue -cne '64 KiB' -or
+        $controls.diskModels.defaultValue -cne 'Microsoft NVMe Direct Disk v2') {
+        throw 'S4: unexpected preset guidance or common storage defaults.'
+    }
+    $expectedDefaults = @{
+        driveLetter = @('D', 'T')
+        volumeLabel = @('SQLTemp', 'TempNVMe')
+        volumePaths = @('tempdb\data;tempdb\log', 'temp\data;temp\log')
+        clusterSize = @('64 KiB', '4 KiB')
+    }
+    foreach ($name in $expectedDefaults.Keys) {
+        $values = $expectedDefaults[$name]
+        if ($controls[$name].defaultValue -cne "[if(equals(steps('settings').preset, 'sql'), '$($values[0])', '$($values[1])')]") {
+            throw "S4: wrong preset defaults for $name."
         }
     }
-    Write-Output 'S4 PASS: UI warnings, VM guards, output/profile bindings and defaults. Portal execution requires sandbox testing.'
+    $expectedSummary = "[concat('Effective settings: ', toUpper(steps('settings').driveLetter), ': | Label: ', steps('settings').volumeLabel, ' | Folders: ', steps('settings').volumePaths, ' | NTFS allocation: ', string(div(parse($effectiveCluster), 1024)), ' KiB | Stripe: ', string(div(parse($effectiveStripe), 1024)), ' KiB | Exact disk models: ', $effectiveModels)]"
+    if ($controls.effectiveSettings.options.text -cne $expectedSummary) { throw 'S4: summary must match effective deployment settings.' }
+    foreach ($name in @('driveLetter', 'volumeLabel', 'volumePaths', 'diskModels')) {
+        if ($controls[$name].constraints.required -ne $true) { throw "S4: $name must be required." }
+    }
+    foreach ($name in @('driveLetter', 'volumeLabel', 'volumePaths')) {
+        $control = $controls[$name]
+        if ($control.PSObject.Properties['visible']) { throw 'S4: main fields must remain editable for both presets.' }
+        foreach ($value in $expectedDefaults[$name]) {
+            if ($value -cnotmatch $control.constraints.validations[0].regex) { throw "S4: invalid preset default for $name." }
+        }
+    }
+    foreach ($letter in @('A', 'B', 'C', 'DD')) {
+        if ($letter -cmatch $controls.driveLetter.constraints.validations[0].regex) { throw "S5 UI accepted $letter" }
+    }
+    foreach ($label in @("bad'label", 'bad"label', ('x' * 33))) {
+        if ($label -cmatch $controls.volumeLabel.constraints.validations[0].regex) { throw 'S5 UI accepted invalid label.' }
+    }
+    foreach ($path in @('..\data', 'C:\data', '\data', "bad'path", 'bad"path', 'con', 'nul.txt', 'D:\aUx', 'data\lPt1.log')) {
+        if ($path -cmatch $controls.volumePaths.constraints.validations[0].regex) { throw "S5 UI accepted invalid path: $path" }
+    }
+    foreach ($path in @('D:\tempdb\data', 't:\temp\data;temp\log', 'tempdb\data;D:\tempdb\log')) {
+        if ($path -cnotmatch $controls.volumePaths.constraints.validations[0].regex) { throw "S5 UI rejected valid path syntax: $path" }
+    }
+    foreach ($path in @('D:\', 'D:data', 'D:\..\data', 'D:\data\\logs', '\\server\share')) {
+        if ($path -cmatch $controls.volumePaths.constraints.validations[0].regex) { throw "S5 UI accepted invalid full path: $path" }
+    }
+    $allowedClusters = @($controls.clusterSize.constraints.allowedValues | ForEach-Object { [int]$_.value })
+    if (Compare-Object $allowedClusters $template.parameters.volumeClusterSize.allowedValues) { throw 'S4 cluster choices differ from template.' }
+    $allowedStripes = @($controls.stripeSize.constraints.allowedValues | ForEach-Object { [int]$_.value })
+    if (Compare-Object $allowedStripes @(4096,8192,16384,32768,65536,131072,262144,524288,1048576)) {
+        throw 'S4: stripe choices must match the guest power-of-two range.'
+    }
+    foreach ($name in @('clusterSize', 'stripeSize')) {
+        foreach ($choice in $controls[$name].constraints.allowedValues) {
+            if ($choice.label -cne "$([int]$choice.value / 1024) KiB") { throw 'S4: allocation/stripe labels must match byte values.' }
+        }
+    }
+    Write-Output 'S4 PASS: UI warnings, VM guards, shared preset defaults, Advanced bindings and effective summary. Portal execution requires sandbox testing.'
     Write-Output 'S5 UI PASS: invalid inputs rejected; guest validation is covered by Pester.'
 } finally {
     if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
