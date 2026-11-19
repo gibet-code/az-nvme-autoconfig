@@ -103,7 +103,7 @@
             "visible": "[equals(steps('settings').preset, 'sql')]",
             "options": {
               "icon": "Info",
-              "text": "The SQL preset uses 64 KiB NTFS allocation units, not a universal tempdb requirement. Match folders to your instance's tempdb paths: SELECT physical_name FROM sys.master_files WHERE database_id = 2. This deployment does not move tempdb, configure services or grant permissions."
+              "text": "The SQL preset uses 64 KiB NTFS allocation units, not a universal tempdb requirement. If creating folders, match your instance's tempdb paths: SELECT physical_name FROM sys.master_files WHERE database_id = 2. This deployment does not move tempdb, configure services or grant permissions."
             }
           },
           {
@@ -125,13 +125,28 @@
             "constraints": { "required": false, "validations": [{ "regex": "^[^'\"\\\\/:*?<>|\\x00-\\x1f]{0,32}$", "message": "Leave blank for the preset, or enter 1-32 characters with no quotes or NTFS-invalid characters." }] }
           },
           {
+            "name": "folderMode",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Folder creation",
+            "defaultValue": "Use preset folders",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "Use preset folders", "value": "preset" },
+                { "label": "Custom folders", "value": "custom" },
+                { "label": "No folders (volume only)", "value": "none" }
+              ]
+            }
+          },
+          {
             "name": "volumePaths",
             "type": "Microsoft.Common.TextBox",
-            "label": "Folders (optional override; semicolon-separated)",
+            "label": "Folders (relative or full paths; semicolon-separated)",
             "defaultValue": "",
-            "placeholder": "[if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log')]",
-            "toolTip": "Leave blank to use the preset. Entered overrides are kept when switching presets. Relative or full paths on the selected drive.",
-            "constraints": { "required": false, "validations": [{ "regex": "^(?:(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*)?$", "message": "Leave blank for the preset, or enter relative/full paths on the selected drive separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
+            "placeholder": "work\\data;work\\log",
+            "visible": "[equals(steps('settings').folderMode, 'custom')]",
+            "toolTip": "Entered paths are kept when switching presets or folder modes. To create no folders, select No folders.",
+            "constraints": { "required": true, "validations": [{ "regex": "^(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*$", "message": "Enter relative/full paths on the selected drive separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
           },
           {
             "name": "showAdvanced",
@@ -194,7 +209,7 @@
             "type": "Microsoft.Common.InfoBox",
             "options": {
               "icon": "Info",
-              "text": "[concat('Effective settings: ', toUpper(if(empty(steps('settings').driveLetter), if(equals(steps('settings').preset, 'sql'), 'D', 'T'), steps('settings').driveLetter)), ': | Label: ', if(empty(steps('settings').volumeLabel), if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe'), steps('settings').volumeLabel), ' | Folders: ', if(empty(steps('settings').volumePaths), if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log'), steps('settings').volumePaths), ' | NTFS allocation: ', string(div(parse(if(and(steps('settings').showAdvanced, not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))), 1024)), ' KiB | Stripe: ', string(div(parse(if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536')), 1024)), ' KiB | Exact disk models: ', if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'))]"
+              "text": "[concat('Effective settings: ', toUpper(if(empty(steps('settings').driveLetter), if(equals(steps('settings').preset, 'sql'), 'D', 'T'), steps('settings').driveLetter)), ': | Label: ', if(empty(steps('settings').volumeLabel), if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe'), steps('settings').volumeLabel), ' | Folders: ', if(equals(steps('settings').folderMode, 'none'), '(none)', if(equals(steps('settings').folderMode, 'custom'), steps('settings').volumePaths, if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log'))), ' | NTFS allocation: ', string(div(parse(if(and(steps('settings').showAdvanced, not(empty(steps('settings').clusterSize)), not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))), 1024)), ' KiB | Stripe: ', string(div(parse(if(and(steps('settings').showAdvanced, not(empty(steps('settings').stripeSize))), steps('settings').stripeSize, '65536')), 1024)), ' KiB | Exact disk models: ', if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'))]"
             }
           }
         ]
@@ -204,10 +219,10 @@
       "vmName": "[basics('vmSelector').name]",
       "driveLetter": "[toUpper(if(empty(steps('settings').driveLetter), if(equals(steps('settings').preset, 'sql'), 'D', 'T'), steps('settings').driveLetter))]",
       "volumeLabel": "[if(empty(steps('settings').volumeLabel), if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe'), steps('settings').volumeLabel)]",
-      "volumePaths": "[split(if(empty(steps('settings').volumePaths), if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log'), steps('settings').volumePaths), ';')]",
+      "volumePaths": "[if(equals(steps('settings').folderMode, 'none'), parse('[]'), split(if(equals(steps('settings').folderMode, 'custom'), steps('settings').volumePaths, if(equals(steps('settings').preset, 'sql'), 'tempdb\\data;tempdb\\log', 'temp\\data;temp\\log')), ';'))]",
       "diskModels": "[split(if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2'), ';')]",
-      "volumeClusterSize": "[parse(if(and(steps('settings').showAdvanced, not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096')))]",
-      "virtualDiskStripeSize": "[parse(if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536'))]",
+      "volumeClusterSize": "[parse(if(and(steps('settings').showAdvanced, not(empty(steps('settings').clusterSize)), not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096')))]",
+      "virtualDiskStripeSize": "[parse(if(and(steps('settings').showAdvanced, not(empty(steps('settings').stripeSize))), steps('settings').stripeSize, '65536'))]",
       "runTag": "[utcNow()]"
     }
   }

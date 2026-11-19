@@ -138,20 +138,21 @@ try {
         $expression = $output.Value
         $type = 'string'
         if ($expression -match '^\[split\(') { $type = 'array' }
+        if ($expression -match "^\[if\(.*parse\('\[\]'\), split\(") { $type = 'array' }
         if ($expression -match '^\[parse\(') { $type = 'int' }
         if ($type -ne $template.parameters.($output.Name).type) { throw "S4: output type mismatch for $($output.Name)" }
     }
     $effectiveDrive = "if(empty(steps('settings').driveLetter), if(equals(steps('settings').preset, 'sql'), 'D', 'T'), steps('settings').driveLetter)"
     $effectiveLabel = "if(empty(steps('settings').volumeLabel), if(equals(steps('settings').preset, 'sql'), 'SQLTemp', 'TempNVMe'), steps('settings').volumeLabel)"
-    $effectivePaths = "if(empty(steps('settings').volumePaths), if(equals(steps('settings').preset, 'sql'), 'tempdb\data;tempdb\log', 'temp\data;temp\log'), steps('settings').volumePaths)"
-    $effectiveCluster = "if(and(steps('settings').showAdvanced, not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))"
-    $effectiveStripe = "if(steps('settings').showAdvanced, steps('settings').stripeSize, '65536')"
+    $effectivePaths = "if(equals(steps('settings').folderMode, 'custom'), steps('settings').volumePaths, if(equals(steps('settings').preset, 'sql'), 'tempdb\data;tempdb\log', 'temp\data;temp\log'))"
+    $effectiveCluster = "if(and(steps('settings').showAdvanced, not(empty(steps('settings').clusterSize)), not(equals(steps('settings').clusterSize, 'preset'))), steps('settings').clusterSize, if(equals(steps('settings').preset, 'sql'), '65536', '4096'))"
+    $effectiveStripe = "if(and(steps('settings').showAdvanced, not(empty(steps('settings').stripeSize))), steps('settings').stripeSize, '65536')"
     $effectiveModels = "if(steps('settings').showAdvanced, steps('settings').diskModels, 'Microsoft NVMe Direct Disk v2')"
     $expectedOutputs = @{
         vmName = "[basics('vmSelector').name]"
         driveLetter = "[toUpper($effectiveDrive)]"
         volumeLabel = "[$effectiveLabel]"
-        volumePaths = "[split($effectivePaths, ';')]"
+        volumePaths = "[if(equals(steps('settings').folderMode, 'none'), parse('[]'), split($effectivePaths, ';'))]"
         diskModels = "[split($effectiveModels, ';')]"
         volumeClusterSize = "[parse($effectiveCluster)]"
         virtualDiskStripeSize = "[parse($effectiveStripe)]"
@@ -165,7 +166,7 @@ try {
         if ($controls.ContainsKey($control.name)) { throw 'S4: duplicate settings control name.' }
         $controls[$control.name] = $control
     }
-    $expectedControlNames = @('preset', 'sqlInfo', 'driveLetter', 'volumeLabel', 'volumePaths',
+    $expectedControlNames = @('preset', 'sqlInfo', 'driveLetter', 'volumeLabel', 'folderMode', 'volumePaths',
         'showAdvanced', 'advancedInfo', 'clusterSize', 'stripeSize', 'diskModels', 'effectiveSettings')
     if (Compare-Object @($controls.Keys) $expectedControlNames) { throw 'S4: expected one shared form without a manual retry tag.' }
     if ($controls.preset.defaultValue -cne 'SQL Server tempdb' -or
@@ -175,6 +176,13 @@ try {
     }
     if ($controls.showAdvanced.type -ne 'Microsoft.Common.CheckBox' -or $controls.showAdvanced.constraints.required -ne $false) {
         throw 'S4: Advanced must be optional.'
+    }
+    if ($controls.folderMode.defaultValue -cne 'Use preset folders' -or
+        $controls.folderMode.constraints.required -ne $true -or
+        ($controls.folderMode.constraints.allowedValues | ConvertTo-Json -Compress) -cne
+        '[{"label":"Use preset folders","value":"preset"},{"label":"Custom folders","value":"custom"},{"label":"No folders (volume only)","value":"none"}]' -or
+        $controls.volumePaths.visible -cne "[equals(steps('settings').folderMode, 'custom')]") {
+        throw 'S4: optional folder modes must distinguish preset/custom paths from no folders.'
     }
     foreach ($name in @('advancedInfo', 'clusterSize', 'stripeSize', 'diskModels')) {
         if ($controls[$name].visible -cne "[steps('settings').showAdvanced]") { throw "S4: wrong Advanced visibility for $name." }
@@ -189,26 +197,28 @@ try {
         volumeLabel = @('SQLTemp', 'TempNVMe')
         volumePaths = @('tempdb\data;tempdb\log', 'temp\data;temp\log')
     }
-    foreach ($name in $expectedDefaults.Keys) {
+    foreach ($name in @('driveLetter', 'volumeLabel')) {
         $values = $expectedDefaults[$name]
         if ($controls[$name].defaultValue -cne '' -or
             $controls[$name].placeholder -cne "[if(equals(steps('settings').preset, 'sql'), '$($values[0])', '$($values[1])')]") {
             throw "S4: $name must start blank with reactive preset placeholders."
         }
     }
-    $expectedSummary = "[concat('Effective settings: ', toUpper($effectiveDrive), ': | Label: ', $effectiveLabel, ' | Folders: ', $effectivePaths, ' | NTFS allocation: ', string(div(parse($effectiveCluster), 1024)), ' KiB | Stripe: ', string(div(parse($effectiveStripe), 1024)), ' KiB | Exact disk models: ', $effectiveModels)]"
+    $expectedSummary = "[concat('Effective settings: ', toUpper($effectiveDrive), ': | Label: ', $effectiveLabel, ' | Folders: ', if(equals(steps('settings').folderMode, 'none'), '(none)', $effectivePaths), ' | NTFS allocation: ', string(div(parse($effectiveCluster), 1024)), ' KiB | Stripe: ', string(div(parse($effectiveStripe), 1024)), ' KiB | Exact disk models: ', $effectiveModels)]"
     if ($controls.effectiveSettings.options.text -cne $expectedSummary) { throw 'S4: summary must match effective deployment settings.' }
-    foreach ($name in @('clusterSize', 'stripeSize', 'diskModels')) {
+    foreach ($name in @('volumePaths', 'clusterSize', 'stripeSize', 'diskModels')) {
         if ($controls[$name].constraints.required -ne $true) { throw "S4: $name must be required." }
     }
-    foreach ($name in @('driveLetter', 'volumeLabel', 'volumePaths')) {
+    foreach ($name in @('driveLetter', 'volumeLabel')) {
         $control = $controls[$name]
         if ($control.constraints.required -ne $false -or '' -cnotmatch $control.constraints.validations[0].regex) {
             throw "S4: $name must allow a blank override to follow the preset."
         }
         if ($control.PSObject.Properties['visible']) { throw 'S4: main fields must remain editable for both presets.' }
+    }
+    foreach ($name in $expectedDefaults.Keys) {
         foreach ($value in $expectedDefaults[$name]) {
-            if ($value -cnotmatch $control.constraints.validations[0].regex) { throw "S4: invalid preset default for $name." }
+            if ($value -cnotmatch $controls[$name].constraints.validations[0].regex) { throw "S4: invalid preset default for $name." }
         }
     }
     foreach ($letter in @('A', 'B', 'C', 'DD')) {

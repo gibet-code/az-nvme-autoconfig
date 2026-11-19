@@ -298,6 +298,8 @@ Describe 'NVMe configuration guard rails (U1-U8 and S5)' {
         Should -Invoke New-ItemProperty -Times 1 -ParameterFilter {
             $Name -eq 'VolumePaths' -and $Value.Count -eq 0 -and $PropertyType -eq 'MultiString'
         }
+        Should -Invoke Start-Process -Times 1
+        Should -Invoke Get-Item -Times 0
     }
 
     It 'honors WhatIf without modifying registry or launching executables' {
@@ -442,6 +444,13 @@ Describe 'Native path health checks' {
         $output[-1] | Should -BeLike 'OK:*'
         Should -Invoke Test-Path -Times 1 -ParameterFilter { $LiteralPath -eq 'D:\tempdb\data' -and $PathType -eq 'Container' }
         Should -Invoke Test-Path -Times 0 -ParameterFilter { $LiteralPath -like 'D:\\*' }
+    }
+
+    It 'accepts volume-only configuration without requiring folders' {
+        $global:NvmeTest_config.VolumePaths = [string[]]@()
+        $output = & $testScript
+        $output[-1] | Should -BeLike 'OK:*'
+        Should -Invoke Test-Path -Times 0 -ParameterFilter { $PathType -eq 'Container' }
     }
 
     It 'reports legacy relative registry entries as invalid even if folders exist' {

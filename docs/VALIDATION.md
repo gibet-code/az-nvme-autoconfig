@@ -106,9 +106,12 @@ lab reset as a production migration procedure.
   Do not restore a user-supplied location parameter or redeploy the VM itself.
 - Use collection functions such as `first(skip(...))` in portal expressions.
   The CreateUiDefinition converter rejects ARM-style `split(...)[n]` indexing.
-- Keep a single set of optional volume overrides; blank fields follow the preset.
+- Keep a single set of optional drive/label overrides; blank fields follow the preset.
   Do not rely on reactive TextBox defaults: the portal retains initialized values.
   Preserve entered overrides when switching presets; clearing them uses the preset.
+  Folder modes must distinguish preset/custom folders from no folders (`[]`, not
+  an array containing an empty string). No-folder deployments remain unverified
+  on Azure. Guard numeric dropdown initialization before parsing advanced values.
   Advanced overrides affect outputs only while enabled; the effective-settings
   summary must reflect the same values. SQL defaults to 64 KiB NTFS allocation,
   general purpose to 4 KiB, and both to 64 KiB stripe size. Portal retry tags are
@@ -142,7 +145,7 @@ lab reset as a production migration procedure.
 
 ## Local test coverage
 
-The local baseline is **102 passing Pester tests** on Windows PowerShell 5.1:
+The local baseline is **103 passing Pester tests** on Windows PowerShell 5.1:
 **335/351 executable commands covered (95.44%)** across the three guest scripts
 and the lab-only disk-reset helper.
 

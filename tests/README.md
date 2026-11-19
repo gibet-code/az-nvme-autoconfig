@@ -19,7 +19,7 @@ powershell.exe -NoProfile -Command "Import-Module Pester -RequiredVersion 5.7.1;
 |---|---|
 | S1-S2 | Bicep build/lint, exact generated ARM synchronization and automatic VM-region/module wiring |
 | S3 | Actual PowerShell 5.1 parsing, embedded-source equality and analyzer |
-| S4-S5 | UI outputs/defaults/profile wiring, warnings and input validation |
+| S4-S5 | Shared presets, optional folder modes, Advanced outputs/summary, warnings and input validation |
 | U1-U8 | Typed settings, disk/volume/path guards, DVD relocation, native execution, postconditions and repeat configuration |
 | U9 | Revert preserves other boot entries and is repeatable |
 | Additional Pester cases | Native path health checks, RAW-reset guards and no PowerShell folder-creation fallback |
@@ -108,7 +108,8 @@ readiness from storage health alone.
   service-account ACLs after storage loss, startup timing and ERRORLOG errors 3/5.
 - **Portal:** Use the [CreateUiDefinition sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade)
   and a published template. Check visible disclaimers/confirmation, SQL/general
-  preset defaults and switching after edits, full/relative paths, numeric outputs
+  preset defaults and switching after edits, preset/custom/no-folder modes,
+  full/relative paths, numeric outputs
   and current VM region. Check Advanced overrides, unchecking Advanced to restore
   preset storage values, summary/output agreement and automatic retry tags. Reject
   Linux, stopped or cross-resource-group VMs and unsafe inputs.

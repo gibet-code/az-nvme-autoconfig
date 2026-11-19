@@ -36,9 +36,12 @@ Select an existing running Windows VM and choose a storage preset:
 | General purpose | T | TempNVMe | temp\data;temp\log | 4 KiB |
 
 Both presets use one form and the same native storage mechanism. Leave the optional
-drive, label and folder overrides blank to follow the selected preset; placeholders
+drive and label overrides blank to follow the selected preset; placeholders
 show its defaults. Entered overrides are preserved when switching presets. Review
 the effective-settings summary after changing presets or editing values.
+**Folder creation** offers preset folders, custom folders, or **No folders (volume
+only)**. Custom paths remain editable and are preserved when switching modes.
+Volume-only mode passes an empty folder array; it does not delete existing folders.
 **Advanced** enables allocation-unit, stripe-size and
 exact temporary-disk model overrides; unchecking it restores the preset's storage
 settings without changing drive, label or folders. Allocation defaults to **Use
@@ -74,7 +77,8 @@ az deployment group create -g $rg -f .\nvme-autoconfig.bicep `
 | runTag | utcNow() | Use a fresh value when retrying saved parameters |
 
 CLI defaults use SQL-oriented names; override the label and folders for other
-workloads.
+workloads. Set `volumePaths` to `[]` in a parameter file for volume-only deployment.
+Empty-folder native behavior has not yet been verified on Azure.
 
 Paths are normalized and missing parent entries added automatically. For example,
 `D:\work\data` and `work\log` become `\work`, `\work\data`,
