@@ -1,0 +1,257 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "isWizard": true,
+      "basics": {
+        "description": "Experimental, undocumented boot provisioning. Select an existing RUNNING Windows VM. No SQL configuration or ACL changes are performed.",
+        "resourceGroup": { "allowExisting": true },
+        "location": { "visible": false }
+      }
+    },
+    "basics": [
+      {
+        "name": "disclaimer",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": true,
+        "options": {
+          "icon": "Warning",
+          "text": "This is an independently driven project, not a Microsoft service or product. There are no implicit or explicit obligations related to this project; it is provided \"as is\", with no warranties, and confers no rights."
+        }
+      },
+      {
+        "name": "componentWarning",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": true,
+        "options": {
+          "icon": "Warning",
+          "text": "LocalStoragePrepExtension and the autoconfig binaries are undocumented and may change without notice. This changes Windows BootExecute. Test on a disposable VM first. Support for self-installed SQL Server is not confirmed."
+        }
+      },
+      {
+        "name": "sqlWarning",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": true,
+        "options": {
+          "icon": "Warning",
+          "text": "This is not a verified end-to-end unattended SQL tempdb recovery solution. SQL permissions, startup ordering and readiness remain unverified. No SQL placement or permission changes are performed."
+        }
+      },
+      {
+        "name": "vmSelector",
+        "type": "Microsoft.Solutions.ResourceSelector",
+        "label": "Existing Windows VM (same resource group as above)",
+        "resourceType": "Microsoft.Compute/virtualMachines",
+        "options": { "filter": { "subscription": "onBasics", "location": "all" } }
+      },
+      {
+        "name": "vmDetails",
+        "type": "Microsoft.Solutions.ArmApiControl",
+        "request": {
+          "method": "GET",
+          "path": "[concat(basics('vmSelector').id, '?api-version=2025-04-01&$expand=instanceView')]"
+        }
+      },
+      {
+        "name": "confirmation",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Type CONFIRM to accept the experimental boot change",
+        "constraints": {
+          "required": true,
+          "validations": [
+            { "regex": "^CONFIRM$", "message": "Type CONFIRM after reviewing the warning." },
+            {
+              "isValid": "[equals(toLower(split(basics('vmSelector').id, '/')[4]), toLower(resourceGroup().name))]",
+              "message": "The VM must be in the selected deployment resource group."
+            },
+            {
+              "isValid": "[equals(basics('vmDetails').properties.storageProfile.osDisk.osType, 'Windows')]",
+              "message": "Select a Windows VM. ResourceSelector itself does not filter by OS."
+            },
+            {
+              "isValid": "[contains(string(basics('vmDetails').properties.instanceView.statuses), 'PowerState/running')]",
+              "message": "The VM must be running. Start it separately and reselect it."
+            }
+          ]
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "settings",
+        "label": "Volume settings",
+        "elements": [
+          {
+            "name": "profile",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Profile",
+            "defaultValue": "SQL Server",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "SQL Server", "value": "sql" },
+                { "label": "Custom", "value": "custom" }
+              ]
+            }
+          },
+          {
+            "name": "sqlInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "options": {
+              "icon": "Info",
+              "text": "Match folders to your instance's tempdb paths: SELECT physical_name FROM sys.master_files WHERE database_id = 2. The SQL service account needs folder access. This deployment does not move tempdb or grant permissions."
+            }
+          },
+          {
+            "name": "sqlDriveLetter",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SQL drive letter",
+            "defaultValue": "D",
+            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^[D-Zd-z]$", "message": "One letter D-Z, without a colon." }] }
+          },
+          {
+            "name": "sqlVolumeLabel",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SQL volume label",
+            "defaultValue": "SQLTemp",
+            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^[^'\"\\\\/:*?<>|\\x00-\\x1f]{1,32}$", "message": "1-32 characters; no quotes or NTFS-invalid characters." }] }
+          },
+          {
+            "name": "sqlVolumePaths",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SQL folders (relative or full paths; semicolon-separated)",
+            "defaultValue": "tempdb\\data;tempdb\\log",
+            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*$", "message": "Relative folders or full paths on the selected drive, separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
+          },
+          {
+            "name": "sqlClusterSize",
+            "type": "Microsoft.Common.DropDown",
+            "label": "SQL NTFS allocation unit",
+            "defaultValue": "64 KB",
+            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
+                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
+                { "label": "64 KB", "value": "65536" }
+              ]
+            }
+          },
+          {
+            "name": "sqlStripeSize",
+            "type": "Microsoft.Common.DropDown",
+            "label": "SQL stripe size (multi-disk behavior unverified)",
+            "defaultValue": "64 KB",
+            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
+                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
+                { "label": "64 KB", "value": "65536" }, { "label": "128 KB", "value": "131072" },
+                { "label": "256 KB", "value": "262144" }, { "label": "512 KB", "value": "524288" },
+                { "label": "1024 KB", "value": "1048576" }
+              ]
+            }
+          },
+          {
+            "name": "sqlDiskModels",
+            "type": "Microsoft.Common.TextBox",
+            "label": "SQL exact disk models (advanced; semicolon-separated)",
+            "defaultValue": "Microsoft NVMe Direct Disk v2",
+            "visible": "[equals(steps('settings').profile, 'sql')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^[^'\";\\x00-\\x1f]+(;[^'\";\\x00-\\x1f]+)*$", "message": "Nonempty exact model names, no quotes." }] }
+          },
+          {
+            "name": "customDriveLetter",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Custom drive letter",
+            "defaultValue": "T",
+            "visible": "[equals(steps('settings').profile, 'custom')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^[D-Zd-z]$", "message": "One letter D-Z, without a colon." }] }
+          },
+          {
+            "name": "customVolumeLabel",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Custom volume label",
+            "defaultValue": "TempNVMe",
+            "visible": "[equals(steps('settings').profile, 'custom')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^[^'\"\\\\/:*?<>|\\x00-\\x1f]{1,32}$", "message": "1-32 characters; no quotes or NTFS-invalid characters." }] }
+          },
+          {
+            "name": "customVolumePaths",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Custom folders (relative or full paths; semicolon-separated)",
+            "defaultValue": "temp\\data;temp\\log",
+            "visible": "[equals(steps('settings').profile, 'custom')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^(?!.*\\.\\.)(?!.*[. ](?:\\\\|;|$))(?!.*(?:^|[;\\\\])(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|[;\\\\]|$))(?:(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)(?:;(?:[D-Zd-z]:\\\\)?[^'\"\\\\/:*?<>|;\\x00-\\x1f]+(?:\\\\[^'\"\\\\/:*?<>|;\\x00-\\x1f]+)*)*$", "message": "Relative folders or full paths on the selected drive, separated by ;. The guest verifies drive agreement. No quotes, traversal, empty segments or reserved names." }] }
+          },
+          {
+            "name": "customClusterSize",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Custom NTFS allocation unit",
+            "defaultValue": "4 KB",
+            "visible": "[equals(steps('settings').profile, 'custom')]",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
+                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
+                { "label": "64 KB", "value": "65536" }
+              ]
+            }
+          },
+          {
+            "name": "customStripeSize",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Custom stripe size (multi-disk behavior unverified)",
+            "defaultValue": "64 KB",
+            "visible": "[equals(steps('settings').profile, 'custom')]",
+            "constraints": {
+              "required": true,
+              "allowedValues": [
+                { "label": "4 KB", "value": "4096" }, { "label": "8 KB", "value": "8192" },
+                { "label": "16 KB", "value": "16384" }, { "label": "32 KB", "value": "32768" },
+                { "label": "64 KB", "value": "65536" }, { "label": "128 KB", "value": "131072" },
+                { "label": "256 KB", "value": "262144" }, { "label": "512 KB", "value": "524288" },
+                { "label": "1024 KB", "value": "1048576" }
+              ]
+            }
+          },
+          {
+            "name": "customDiskModels",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Custom exact disk models (advanced; never persistent disks)",
+            "defaultValue": "Microsoft NVMe Direct Disk v2",
+            "visible": "[equals(steps('settings').profile, 'custom')]",
+            "constraints": { "required": true, "validations": [{ "regex": "^[^'\";\\x00-\\x1f]+(;[^'\";\\x00-\\x1f]+)*$", "message": "Nonempty exact model names, no quotes." }] }
+          },
+          {
+            "name": "runTag",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Unique retry tag (change for each redeployment, e.g. portal-2)",
+            "defaultValue": "[utcNow()]",
+            "constraints": { "required": true }
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "vmName": "[basics('vmSelector').name]",
+      "driveLetter": "[toUpper(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlDriveLetter, steps('settings').customDriveLetter))]",
+      "volumeLabel": "[if(equals(steps('settings').profile, 'sql'), steps('settings').sqlVolumeLabel, steps('settings').customVolumeLabel)]",
+      "volumePaths": "[split(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlVolumePaths, steps('settings').customVolumePaths), ';')]",
+      "diskModels": "[split(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlDiskModels, steps('settings').customDiskModels), ';')]",
+      "volumeClusterSize": "[parse(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlClusterSize, steps('settings').customClusterSize))]",
+      "virtualDiskStripeSize": "[parse(if(equals(steps('settings').profile, 'sql'), steps('settings').sqlStripeSize, steps('settings').customStripeSize))]",
+      "runTag": "[steps('settings').runTag]"
+    }
+  }
+}

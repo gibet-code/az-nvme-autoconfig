@@ -1,0 +1,20 @@
+TestResults.xml
+coverage.xml
+*.local.json
+tests/integration/results/
+
+# Local evidence and analysis
+/.local/
+*.clixml
+*.log
+coverage-*.xml
+
+# Downloaded native binaries/packages
+*.exe
+*.cab
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+/.azure/

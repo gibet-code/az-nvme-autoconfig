@@ -1,0 +1,284 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.49.2.45890",
+      "templateHash": "1119312897500000869"
+    }
+  },
+  "parameters": {
+    "vmName": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "Existing, running Windows VM in the deployment resource group."
+      }
+    },
+    "driveLetter": {
+      "type": "string",
+      "defaultValue": "D",
+      "minLength": 1,
+      "maxLength": 1,
+      "metadata": {
+        "description": "Single drive letter D-Z, without a colon. Validated in the guest before changes."
+      }
+    },
+    "volumeLabel": {
+      "type": "string",
+      "defaultValue": "SQLTemp",
+      "minLength": 1,
+      "maxLength": 32,
+      "metadata": {
+        "description": "Volume label, without quotes or NTFS-invalid characters. Maximum 32 characters."
+      }
+    },
+    "volumePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "defaultValue": [
+        "tempdb\\data",
+        "tempdb\\log"
+      ],
+      "metadata": {
+        "description": "Relative folders or full paths on driveLetter (for example D:\\tempdb\\data). Guest validation rejects mismatched drives and unsafe paths, then writes leading-backslash, parent-first native entries. An empty array creates no folders (unverified on Azure)."
+      }
+    },
+    "diskModels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "defaultValue": [
+        "Microsoft NVMe Direct Disk v2"
+      ],
+      "minLength": 1,
+      "metadata": {
+        "description": "Exact NVMe temp disk model names. Never specify a persistent/data disk model."
+      }
+    },
+    "volumeClusterSize": {
+      "type": "int",
+      "defaultValue": 65536,
+      "allowedValues": [
+        4096,
+        8192,
+        16384,
+        32768,
+        65536
+      ],
+      "metadata": {
+        "description": "NTFS allocation unit size in bytes."
+      }
+    },
+    "virtualDiskStripeSize": {
+      "type": "int",
+      "defaultValue": 65536,
+      "minValue": 4096,
+      "maxValue": 1048576,
+      "metadata": {
+        "description": "Stripe size in bytes. Multi-disk behavior remains unverified."
+      }
+    },
+    "runTag": {
+      "type": "string",
+      "defaultValue": "[utcNow()]",
+      "metadata": {
+        "description": "Changes the run-command parameters on redeployment. Supply a new value when retrying."
+      }
+    }
+  },
+  "resources": {
+    "vm": {
+      "existing": true,
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2025-04-01",
+      "name": "[parameters('vmName')]"
+    },
+    "configuration": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('nvmeAutoConfig-{0}', uniqueString(resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "vmName": {
+            "value": "[parameters('vmName')]"
+          },
+          "location": {
+            "value": "[reference('vm', '2025-04-01', 'full').location]"
+          },
+          "driveLetter": {
+            "value": "[parameters('driveLetter')]"
+          },
+          "volumeLabel": {
+            "value": "[parameters('volumeLabel')]"
+          },
+          "volumePaths": {
+            "value": "[parameters('volumePaths')]"
+          },
+          "diskModels": {
+            "value": "[parameters('diskModels')]"
+          },
+          "volumeClusterSize": {
+            "value": "[parameters('volumeClusterSize')]"
+          },
+          "virtualDiskStripeSize": {
+            "value": "[parameters('virtualDiskStripeSize')]"
+          },
+          "runTag": {
+            "value": "[parameters('runTag')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.49.2.45890",
+              "templateHash": "4387802093965009400"
+            }
+          },
+          "parameters": {
+            "vmName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "driveLetter": {
+              "type": "string"
+            },
+            "volumeLabel": {
+              "type": "string"
+            },
+            "volumePaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "diskModels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "volumeClusterSize": {
+              "type": "int"
+            },
+            "virtualDiskStripeSize": {
+              "type": "int"
+            },
+            "runTag": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "$fxv#0": "#requires -Version 5.1\r\n<#\r\n.SYNOPSIS\r\nConfigures undocumented Azure temp NVMe boot provisioning. Run elevated.\r\n.DESCRIPTION\r\nArray parameters use JSON strings so this file works unchanged with managed\r\nRun Command, action Run Command, Azure PowerShell and manual invocation.\r\nOnly the lab reset companion script clears disks.\r\n#>\r\n[CmdletBinding(SupportsShouldProcess)]\r\nparam(\r\n    [ValidatePattern('^[D-Zd-z]$')]\r\n    [string] $DriveLetter = 'D',\r\n\r\n    [ValidateLength(1, 32)]\r\n    [ValidatePattern('^[^''\"\\\\/:*?<>|\\x00-\\x1f]+$')]\r\n    [string] $VolumeLabel = 'SQLTemp',\r\n\r\n    [string] $VolumePathsJson = '[\"tempdb\\\\data\",\"tempdb\\\\log\"]',\r\n    [string] $DiskModelsJson = '[\"Microsoft NVMe Direct Disk v2\"]',\r\n\r\n    [ValidateSet(4096, 8192, 16384, 32768, 65536)]\r\n    [int] $VolumeClusterSize = 65536,\r\n\r\n    [ValidateRange(4096, 1048576)]\r\n    [int] $VirtualDiskStripeSize = 65536,\r\n\r\n    [string] $RunTag = 'manual'\r\n)\r\n\r\n$ErrorActionPreference = 'Stop'\r\nSet-StrictMode -Version 3.0\r\n$DriveLetter = $DriveLetter.ToUpperInvariant()\r\n\r\n# Check JSON shape before conversion can unwrap a single-element array.\r\nif ($VolumePathsJson -notmatch '^\\s*\\[' -or $DiskModelsJson -notmatch '^\\s*\\[') {\r\n    throw 'VolumePathsJson and DiskModelsJson must be JSON arrays of strings.'\r\n}\r\n$requestedPaths = ConvertFrom-Json -InputObject $VolumePathsJson\r\n$diskModels = ConvertFrom-Json -InputObject $DiskModelsJson\r\nif ($requestedPaths -isnot [array] -or $diskModels -isnot [array]) {\r\n    throw 'VolumePathsJson and DiskModelsJson must be JSON arrays of strings.'\r\n}\r\n$nativeVolumePaths = [System.Collections.Generic.List[string]]::new()\r\n$seenPaths = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)\r\nforeach ($path in $requestedPaths) {\r\n    if ($path -is [string] -and $path -match '^([a-z]):\\\\') {\r\n        if ($Matches[1] -ne $DriveLetter) {\r\n            throw \"Folder '$path' must use the configured drive letter $($DriveLetter):.\"\r\n        }\r\n        $path = $path.Substring(3)\r\n    }\r\n    if ($path -isnot [string] -or [string]::IsNullOrWhiteSpace($path) -or\r\n        $path -match '[''\"/:*?<>|\\x00-\\x1f]' -or $path -match '\\.\\.' -or\r\n        $path -match '(^\\\\|\\\\$|\\\\\\\\|(^|\\\\)\\.(\\\\|$)|[. ](\\\\|$))' -or\r\n        $path -match '(^|\\\\)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\\.|\\\\|$)') {\r\n        throw \"Invalid folder '$path'. Use a safe relative folder or a full path on $($DriveLetter): with no quotes, traversal, reserved names or empty segments.\"\r\n    }\r\n    # Native creation needs a leading separator and does not create missing parents.\r\n    $nativePath = ''\r\n    foreach ($segment in $path.Split('\\')) {\r\n        $nativePath += \"\\$segment\"\r\n        if ($seenPaths.Add($nativePath)) { $nativeVolumePaths.Add($nativePath) }\r\n    }\r\n}\r\nif ($diskModels.Count -eq 0) { throw 'At least one exact disk model is required.' }\r\nforeach ($model in $diskModels) {\r\n    if ($model -isnot [string] -or [string]::IsNullOrWhiteSpace($model) -or $model -match '[''\"\\x00-\\x1f]') {\r\n        throw 'Disk model names must be nonempty strings without quotes or control characters.'\r\n    }\r\n}\r\nif (($VirtualDiskStripeSize -band ($VirtualDiskStripeSize - 1)) -ne 0) {\r\n    throw 'VirtualDiskStripeSize must be a power of two between 4096 and 1048576.'\r\n}\r\n\r\nfunction Assert-NvmeFolderPath {\r\n    param([switch] $RequirePresent)\r\n    foreach ($path in $nativeVolumePaths) {\r\n        $fullPath = \"$($DriveLetter):$path\"\r\n        if (-not (Test-Path -LiteralPath $fullPath)) {\r\n            if ($RequirePresent) {\r\n                throw \"Missing folder after autoconfigw: $fullPath. Inspect $env:WINDIR\\Logs\\Autoconfig\\autoconfig.log before another invocation overwrites it.\"\r\n            }\r\n            continue\r\n        }\r\n        $item = Get-Item -LiteralPath $fullPath -Force\r\n        if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {\r\n            throw \"Refusing folder path through a file or reparse point: $fullPath\"\r\n        }\r\n        if ($RequirePresent) { Write-Output \"Folder: $fullPath\" }\r\n    }\r\n}\r\n\r\n$existingVolume = Get-CimInstance Win32_Volume -Filter \"DriveLetter='$($DriveLetter):'\"\r\n$alreadyProvisioned = $null -ne $existingVolume -and $existingVolume.DriveType -eq 3 -and $existingVolume.Label -eq $VolumeLabel\r\nif ($existingVolume -and $existingVolume.DriveType -ne 5 -and -not $alreadyProvisioned) {\r\n    throw \"$($DriveLetter): holds another volume. Nothing was changed; choose another letter.\"\r\n}\r\nif ($alreadyProvisioned -and ($existingVolume.FileSystem -ne 'NTFS' -or $existingVolume.BlockSize -ne $VolumeClusterSize)) {\r\n    throw 'Volume exists but NTFS/cluster size differs from requested settings. Existing volumes are never reformatted.'\r\n}\r\nforeach ($exe in @('autoconfig.exe', 'autoconfigw.exe')) {\r\n    $binary = Join-Path $env:WINDIR \"System32\\$exe\"\r\n    if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {\r\n        throw \"Required binary missing: $binary. Install LocalStoragePrepExtension first.\"\r\n    }\r\n}\r\n$disks = @(Get-Disk | Where-Object { $diskModels -contains $_.FriendlyName })\r\nif ($disks.Count -eq 0) { throw 'No disk matches DiskModelsJson. Nothing was changed.' }\r\nforeach ($disk in $disks) {\r\n    if ($disk.IsBoot -or $disk.IsSystem -or \"$($disk.BusType)\" -ne 'NVMe') {\r\n        throw \"Disk $($disk.Number) is not a safe temp NVMe candidate. Nothing was changed.\"\r\n    }\r\n    if (-not $alreadyProvisioned -and ($disk.PartitionStyle -ne 'RAW' -or $disk.IsOffline -or $disk.IsReadOnly)) {\r\n        throw \"Disk $($disk.Number) is not RAW, online and writable. Nothing was changed. Investigate; do not clear a production disk.\"\r\n    }\r\n    if ($alreadyProvisioned -and ($disk.PartitionStyle -eq 'RAW' -or $disk.IsOffline -or $disk.IsReadOnly)) {\r\n        throw \"Disk $($disk.Number) must be initialized, online and writable when refreshing an existing volume. Nothing was changed; refusing possible additional disk provisioning.\"\r\n    }\r\n}\r\nif ($alreadyProvisioned) { Assert-NvmeFolderPath }\r\n\r\n$sessionPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager'\r\n$autoConfigPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\AutoConfig'\r\n$session = Get-ItemProperty -LiteralPath $sessionPath\r\n$bootProperty = $session.PSObject.Properties['BootExecute']\r\n$bootExecute = @()\r\nif ($bootProperty -and $null -ne $bootProperty.Value) {\r\n    if ($bootProperty.Value -isnot [string[]]) { throw 'BootExecute is not REG_MULTI_SZ. Nothing was changed.' }\r\n    $bootExecute = @($bootProperty.Value)\r\n}\r\nif ($bootExecute.Count -eq 0) { $bootExecute = @('autocheck autochk *') }\r\nif ($bootExecute -notcontains 'autoconfig') { $bootExecute += 'autoconfig' }\r\n\r\n$freeLetter = $null\r\nif ($existingVolume -and $existingVolume.DriveType -eq 5) {\r\n    $usedLetters = @(Get-Volume | Where-Object { $_.DriveLetter } | ForEach-Object { \"$($_.DriveLetter)\".ToUpperInvariant() })\r\n    $usedLetters += @(Get-PSDrive -PSProvider FileSystem | ForEach-Object { $_.Name.ToUpperInvariant() })\r\n    $freeLetter = 90..69 | ForEach-Object { [string][char]$_ } |\r\n        Where-Object { $_ -ne $DriveLetter -and $usedLetters -notcontains $_ } | Select-Object -First 1\r\n    if (-not $freeLetter) { throw 'No free letter E-Z for the DVD drive. Nothing was changed.' }\r\n}\r\nif (-not $PSCmdlet.ShouldProcess(\"$($DriveLetter): ($VolumeLabel)\", \"Configure NVMe boot provisioning (tag: $RunTag)\")) { return }\r\n\r\nif ($freeLetter) {\r\n    $diskpartScript = Join-Path $env:TEMP (\"nvme-optical-{0}.txt\" -f [guid]::NewGuid().ToString('N'))\r\n    try {\r\n        Set-Content -LiteralPath $diskpartScript -Value @(\"select volume $DriveLetter\", \"assign letter=$freeLetter\") -Encoding Ascii\r\n        $diskpartOutput = & diskpart.exe /s $diskpartScript 2>&1 | Out-String\r\n        if ($LASTEXITCODE -ne 0) { throw \"DVD reassignment failed: $diskpartOutput\" }\r\n        if (Get-CimInstance Win32_Volume -Filter \"DriveLetter='$($DriveLetter):'\") {\r\n            throw \"DVD reassignment did not free $($DriveLetter):. Output: $diskpartOutput\"\r\n        }\r\n        Write-Output \"Moved DVD from $($DriveLetter): to $($freeLetter):.\"\r\n    } finally {\r\n        if (Test-Path -LiteralPath $diskpartScript) { Remove-Item -LiteralPath $diskpartScript -Force }\r\n    }\r\n}\r\n\r\n$null = New-Item -Path $autoConfigPath -Force\r\n$settings = @(\r\n    @{ Name = 'PhysicalDiskModel'; Value = [string[]]$diskModels; Type = 'MultiString' }\r\n    @{ Name = 'VolumeLabel'; Value = $VolumeLabel; Type = 'String' }\r\n    @{ Name = 'VolumeDriveLetter'; Value = $DriveLetter; Type = 'String' }\r\n    @{ Name = 'VolumePaths'; Value = [string[]]$nativeVolumePaths.ToArray(); Type = 'MultiString' }\r\n    @{ Name = 'VirtualDiskStripeSize'; Value = $VirtualDiskStripeSize; Type = 'DWord' }\r\n    @{ Name = 'VolumeClusterSize'; Value = $VolumeClusterSize; Type = 'DWord' }\r\n)\r\nforeach ($setting in $settings) {\r\n    $null = New-ItemProperty -LiteralPath $autoConfigPath -Name $setting.Name -Value $setting.Value -PropertyType $setting.Type -Force\r\n}\r\n$null = New-ItemProperty -LiteralPath $sessionPath -Name BootExecute -Value ([string[]]$bootExecute) -PropertyType MultiString -Force\r\n\r\n$process = Start-Process -FilePath (Join-Path $env:WINDIR 'System32\\autoconfigw.exe') -Wait -PassThru -WindowStyle Hidden\r\nif ($process.ExitCode -ne 0) {\r\n    throw \"autoconfigw.exe failed with exit code $($process.ExitCode). Boot configuration remains installed; inspect before retrying.\"\r\n}\r\n$volume = $null\r\nfor ($attempt = 0; $attempt -lt 12; $attempt++) {\r\n    $volume = Get-CimInstance Win32_Volume -Filter \"DriveLetter='$($DriveLetter):'\" |\r\n        Where-Object { $_.DriveType -eq 3 -and $_.Label -eq $VolumeLabel }\r\n    if ($volume) { break }\r\n    Start-Sleep -Seconds 5\r\n}\r\nif (-not $volume) {\r\n    $state = Get-Disk | Select-Object Number, FriendlyName, PartitionStyle, IsOffline, IsReadOnly | Out-String\r\n    throw \"No expected volume after autoconfigw. Boot configuration remains installed. Disk state: $state\"\r\n}\r\nif ($volume.FileSystem -ne 'NTFS' -or $volume.BlockSize -ne $VolumeClusterSize) {\r\n    throw \"Volume exists but NTFS/cluster size differs from requested settings. Existing volumes are never reformatted.\"\r\n}\r\nAssert-NvmeFolderPath -RequirePresent\r\nWrite-Output \"BootExecute: $($bootExecute -join ' | ')\"\r\nWrite-Output \"OK: $($DriveLetter): $VolumeLabel, NTFS, $VolumeClusterSize bytes/cluster. SQL placement and ACLs are separate.\"\r\n"
+          },
+          "resources": {
+            "vm": {
+              "existing": true,
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2025-04-01",
+              "name": "[parameters('vmName')]"
+            },
+            "localStoragePrep": {
+              "type": "Microsoft.Compute/virtualMachines/extensions",
+              "apiVersion": "2026-04-01",
+              "name": "[format('{0}/{1}', parameters('vmName'), 'LocalStoragePrepExtension')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "publisher": "Microsoft.Azure.HostStorage",
+                "type": "LocalStoragePrepExtension",
+                "typeHandlerVersion": "0.1",
+                "autoUpgradeMinorVersion": true,
+                "settings": {}
+              }
+            },
+            "nvmeAutoConfig": {
+              "type": "Microsoft.Compute/virtualMachines/runCommands",
+              "apiVersion": "2026-04-01",
+              "name": "[format('{0}/{1}', parameters('vmName'), 'nvmeAutoConfigRunCommand')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "source": {
+                  "script": "[variables('$fxv#0')]"
+                },
+                "parameters": [
+                  {
+                    "name": "DriveLetter",
+                    "value": "[toUpper(parameters('driveLetter'))]"
+                  },
+                  {
+                    "name": "VolumeLabel",
+                    "value": "[parameters('volumeLabel')]"
+                  },
+                  {
+                    "name": "VolumePathsJson",
+                    "value": "[string(parameters('volumePaths'))]"
+                  },
+                  {
+                    "name": "DiskModelsJson",
+                    "value": "[string(parameters('diskModels'))]"
+                  },
+                  {
+                    "name": "VolumeClusterSize",
+                    "value": "[string(parameters('volumeClusterSize'))]"
+                  },
+                  {
+                    "name": "VirtualDiskStripeSize",
+                    "value": "[string(parameters('virtualDiskStripeSize'))]"
+                  },
+                  {
+                    "name": "RunTag",
+                    "value": "[parameters('runTag')]"
+                  }
+                ],
+                "asyncExecution": false,
+                "treatFailureAsDeploymentFailure": true,
+                "timeoutInSeconds": 900
+              },
+              "dependsOn": [
+                "localStoragePrep"
+              ]
+            }
+          },
+          "outputs": {
+            "runCommandName": {
+              "type": "string",
+              "value": "nvmeAutoConfigRunCommand"
+            },
+            "checkResult": {
+              "type": "string",
+              "value": "[format('az vm run-command show -g {0} --vm-name {1} --run-command-name {2} --instance-view', resourceGroup().name, parameters('vmName'), 'nvmeAutoConfigRunCommand')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "vm"
+      ]
+    }
+  },
+  "outputs": {
+    "runCommandName": {
+      "type": "string",
+      "value": "[reference('configuration').outputs.runCommandName.value]"
+    },
+    "checkResult": {
+      "type": "string",
+      "value": "[reference('configuration').outputs.checkResult.value]"
+    }
+  }
+}

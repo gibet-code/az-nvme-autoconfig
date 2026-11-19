@@ -1,0 +1,37 @@
+name: Validate
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  local-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned validation tools
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-PackageProvider NuGet -Force -Scope CurrentUser
+          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser -SkipPublisherCheck
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser
+          az bicep install --version v0.49.2
+          if ($LASTEXITCODE -ne 0) { throw 'Bicep install failed' }
+      - name: Static validation on Windows PowerShell 5.1
+        shell: powershell
+        run: .\tests\Invoke-StaticTests.ps1
+      - name: Guest unit tests and coverage (no Azure resources)
+        shell: powershell
+        run: |
+          Import-Module Pester -RequiredVersion 5.7.1
+          $config = New-PesterConfiguration
+          $config.Run.Path = '.\tests\NvmeAutoConfig.Tests.ps1'
+          $config.Run.PassThru = $true
+          $config.Output.Verbosity = 'Detailed'
+          $config.CodeCoverage.Enabled = $true
+          $config.CodeCoverage.Path = @('.\scripts\*.ps1', '.\tests\integration\Reset-NvmeTempDisk.ps1')
+          $config.CodeCoverage.OutputPath = Join-Path $env:RUNNER_TEMP 'nvme-coverage.xml'
+          $result = Invoke-Pester -Configuration $config
+          if ($result.FailedCount -gt 0 -or $result.PassedCount -eq 0) { throw 'Pester tests failed' }
